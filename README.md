@@ -1,23 +1,26 @@
 # no_thinking: single-forward-pass rule tasks
 
-An [Inspect](https://inspect.aisi.org.uk) eval that measures how many in-context rule applications a model can
-compose in **one forward pass**: thinking disabled, a 4-token answer budget, and the first visible token scored.
-Every item states the rules of a small system, gives a single-token input, and asks for a single-token answer that
-is uniformly distributed over the answer space by construction.
+An [Inspect](https://inspect.aisi.org.uk) eval that measures how much a model can reason in a single forward
+pass, without generating any tokens first. Thinking is turned off and the answer is read from the first token
+the model produces.
 
-Four families, each a chain of **bijective** in-context maps whose length is the difficulty knob, so "k steps" is
-never secretly fewer and no information is lost along the way:
+To make that measurable, every question has a known serial depth. The prompt sets out the rules of a small
+system, such as a permutation of the alphabet or a five-state machine, and then gives a one-token input. The
+answer is reached from the input in a fixed number of steps, each one application of the rules that needs the
+result of the step before it. A model that can carry k such steps in one forward pass should be accurate up to
+depth k and at chance beyond it.
 
-| family | the system | answer space | depths |
-|---|---|---|---|
-| `iterate_map` | one permutation g of the capital letters (a single 26-cycle) applied k times | A-Z (chance 0.04) | 1 2 3 4 6 8 12 |
-| `state_machine` | 5 states, 6 permutations named a-f, a word of k letters applied right to left (no immediate repeats) | 0-4 (chance 0.20) | 1 2 3 4 6 8 12 16 20 |
-| `chain_lookup` | k maps g_1..g_k of 10 word -> word entries, the last to digits, disjoint vocabularies | 0-9 (chance 0.10) | 1 2 3 4 6 8 12 16 |
-| `sequence_mod` | term n = (f(term n-1) + term n-2) mod 10 with a stated permutation f, k terms after the input | 0-9 (chance 0.10) | 1 2 3 4 6 8 12 16 20 |
+| family | the system | one step | answers | depths |
+|---|---|---|---|---|
+| `iterate_map` | a permutation g of the capital letters, a single 26-cycle | apply g | A-Z, chance 0.04 | 1 2 3 4 6 8 12 |
+| `state_machine` | 5 states and 6 permutations of them named a-f; the question gives a word of k letters | apply the next letter's permutation | 0-4, chance 0.20 | 1 2 3 4 6 8 12 16 20 |
+| `chain_lookup` | k maps g_1..g_k of 10 entries each, word to word, the last one to digits | apply the next map | 0-9, chance 0.10 | 1 2 3 4 6 8 12 16 |
+| `sequence_mod` | a sequence with term n = (f(term n-1) + term n-2) mod 10 for a stated permutation f | compute the next term | 0-9, chance 0.10 | 1 2 3 4 6 8 12 16 20 |
 
-A **level** is a depth on that shared grid (level 1 = depth 1, ..., level 9 = depth 20), so a level means the same
-number of compositions in every family; a family simply lacks the levels whose depth it cannot construct.
-40 items per (family, level) cell, 33 cells, 1320 items in `data/generated.jsonl`.
+Every step is a bijection, so no step loses information and k steps never collapse into fewer. The depth grid
+is shared, so level 5 means depth 6 in every family, and a family that cannot build a depth simply lacks that
+level. Within each (family, level) cell the answers are balanced, so favouring a common answer earns nothing.
+There are 40 items per cell, 33 cells and 1320 items in `data/generated.jsonl`.
 
 ## Run
 
@@ -29,59 +32,74 @@ inspect eval no_thinking.py --model google/gemini-3-pro -T poem=true
 inspect eval no_thinking.py --model anthropic/claude-haiku-4-5 -T temperature=0 -T families=chain_lookup -T levels=1,2,3,4
 ```
 
-Task parameters (`-T name=value`):
+## Settings and conditions
+
+Thinking is turned off with Inspect's `reasoning_effort="none"`, which maps to each provider's thinking-off
+setting and does nothing on models that have no thinking mode. The output budget is four tokens rather than one
+only because some tokenizers emit a digit as two tokens. Only the first visible token is compared with the
+answer. If it is not in the answer space, because the model began an explanation instead, the item is wrong and
+is also counted in the cell's `off_space` rate, so failing and not complying can be told apart.
+
+Nothing follows the input in the prompt, because every position after it is extra computation with access to
+the input. The filler condition adds exactly that on purpose: N copies of `" -"`, one token each on every
+tokenizer tested, appended after the input. The same filler placed before the input line is the control, as
+those positions cannot see the input. The poem condition is filler the model generates itself: it is asked for
+a short poem about a dog before the answer, the last line of its output is scored, and the budget rises to 400
+tokens.
+
+Task parameters, set with `-T name=value`:
 
 | parameter | meaning | default |
 |---|---|---|
-| `filler` | pause tokens appended after the input: N copies of the one-token unit `" -"` | 0 |
-| `filler_position` | `after` the input, or `before` the Input line (the causal control: filler that cannot see the input) | after |
-| `poem` | generated-filler condition: the trailer asks for a ~100-word poem about a dog before the answer; the last output line is scored | false |
-| `addressee` | name in the greeting ("Hello <name>, ..."); inferred for Claude / Gemini / ChatGPT model ids, required otherwise | inferred |
-| `reasoning_effort` | passed to the provider; `none` disables thinking on Claude 4.7+ and is a no-op on models without thinking; some OpenAI reasoning models only accept `minimal` | none |
-| `temperature` | sampling temperature; omit for models that reject it | provider default |
+| `filler` | how many filler units to add | 0 |
+| `filler_position` | `after` the input, or `before` the Input line, the control | after |
+| `filler_unit` | the unit repeated `filler` times | `" -"` |
+| `poem` | `true` for the poem condition | false |
+| `addressee` | the name in the greeting. The data greets Claude, and other models are greeted by their own name so that every model reads the same prompt apart from the name. Inferred from the model id for Claude, Gemini and ChatGPT models, required for anything else | inferred |
+| `reasoning_effort` | passed to the provider; some OpenAI reasoning models only accept `minimal` | none |
+| `temperature` | sampling temperature; must be omitted for models that reject it | omitted |
 | `families`, `levels` | comma-separated filters | all |
 | `data` | path to an items file | data/generated.jsonl |
 
-Nothing ever follows the input line except filler tokens; every instruction, including the poem request, sits before it.
+## Reading the results
 
-## Read the results
+Results are reported per (family, level) cell, named like `chain_lookup L3 (depth 3)`, and never pooled across
+levels or families. The cells differ in depth and in chance floor, so a pooled number would not mean anything.
+Each cell reports:
 
-Metrics are reported **per cell** (`<family> L<level> (depth k)`) and never pooled across levels or families, because
-the rungs differ in depth and in chance floor:
+- `accuracy`, to be read against the cell's `chance`.
+- `off_space`, the share of answers whose first token was not in the answer space. These count as wrong. The
+  rate separates a model that fails from one that does not comply.
+- `reasoning_blocks`, the share of samples whose output contained any reasoning content. It must be 0. Anything
+  else means the provider reasoned despite the setting, and the run is not a single-forward-pass measurement.
+- `output_tokens`, the mean per sample including any hidden reasoning tokens the provider bills. Expect 1 to 4
+  with the token budget and around 100 to 150 for the poem.
 
-- `accuracy`: compare with the cell's `chance`.
-- `off_space`: share of answers whose first token was not in the answer space (the model started writing its working,
-  a tag, or prose). Counted as wrong.
-- `reasoning_blocks`: share of samples whose output contained any reasoning content. **Must be 0**; otherwise the
-  provider reasoned despite `reasoning_effort=none` and the run is not a single-forward-pass measurement.
-- `output_tokens`: mean output tokens per sample, including any hidden reasoning tokens the provider bills. Expect 1-4
-  in the token-budget conditions (digit answers carry one invisible leading token) and roughly 100-150 for the poem.
-
-Each sample's score also stores the raw completion, the stop reason, the token usage and the greeting name used, so
-a run can be audited item by item with `inspect view`.
+Each sample's score also stores the raw completion, the stop reason, the token usage and the greeting name, so a
+run can be checked item by item in `inspect view`.
 
 ## What to expect (Claude models, September 2026)
 
-Without filler the frontier Claude models manage about one composition per forward pass, except on word maps, where
-Opus 5 is perfect at 2-3 hops and 0.70 at 5. A hundred pause tokens buy one or two more compositions, a thousand a
-little more, and the poem is worth about a hundred pause tokens. Every family is at chance from depth 12 for every
-model tried, with or without filler. The wrong answers on the deeper rungs are almost always the right orbit at the
-wrong depth: the model stops one or two compositions short, or overshoots by one.
+Without filler the frontier Claude models manage about one step per forward pass, except on the word maps,
+where Opus 5 is perfect at 2 to 3 hops and at 0.70 by 5. A hundred filler tokens buy one or two more steps, a
+thousand a little more, and the poem is worth about a hundred filler tokens. Every family is at chance from
+depth 12 for every model tried, with or without filler. The wrong answers on the deeper rungs are almost always
+the right orbit at the wrong depth: the model stops one or two steps short, or overshoots by one.
 
 ## Files
 
-- `no_thinking.py`: the Inspect task (dataset loading, prompt rewriting per model and condition, first-token scorer,
-  per-cell metrics).
-- `generate.py`: the four generators, the prompt texts (header, answer trailer, poem trailer, rule wording) and the
-  depth grid. `python generate.py --seed 0` rewrites `data/generated.jsonl` (`--per-level` sets items per cell).
-- `data/generated.jsonl`: one item per line, described by `schema.json`: the prompt as sent (greeting Claude), the
-  rules, input, answer, answer space, `difficulty.level`, `difficulty.depth` and the path from input to answer.
-- `audit.py` and `heuristics/`: the shortcut audit. Every heuristic (13-26 per family: positional, 0-, 1- and 2-step
-  lookups, closed forms, textual cues) is scored against the gold answers per cell; the best per cell goes to
-  `results/baselines.json`. After any change to a generator, run `python audit.py` and check that nothing beats
-  chance on the cells deeper than what the heuristic computes: on earlier versions of these tasks, shortcuts
-  (repeated-symbol coincidences, a linear recurrence's closed form, a short cycle's backward lookup) accounted for
-  whole cells.
+- `no_thinking.py` is the Inspect task: dataset loading, the prompt rewriting for each model and condition, the
+  first-token scorer and the per-cell metrics.
+- `generate.py` holds the four generators, the prompt texts and the depth grid. `python generate.py --seed 0`
+  rewrites `data/generated.jsonl`, and `--per-level` sets the items per cell.
+- `data/generated.jsonl` has one item per line, described by `schema.json`: the prompt as sent, greeting Claude,
+  the rules, the input, the answer and the answer space, the level and depth, and the path from input to answer.
+- `audit.py` and `heuristics/` are the shortcut audit. Every heuristic, 13 to 24 per family, is scored against
+  the gold answers per cell, and the best in each cell is written to `results/baselines.json`. After any change
+  to a generator, run `python audit.py` and check that nothing beats chance on the cells deeper than what it
+  computes. On earlier versions of these tasks, shortcuts accounted for whole cells: repeated symbols that
+  returned to the same state, a linear recurrence with a closed form, a short cycle whose deep steps were a
+  backward lookup.
 
-Every prompt text (the two-paragraph header, the per-family trailers, the poem trailer, each family's rule wording)
-was signed off by the author. Do not edit the wording without going back to them.
+Every prompt text, the header, the trailers and each family's rule wording, was signed off word for word by the
+author. Don't change the wording without going back to them.

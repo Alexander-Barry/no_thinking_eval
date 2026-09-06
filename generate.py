@@ -1,13 +1,20 @@
 """
-Item generators for the single-forward-pass rule tasks: four families of bijective in-context maps.
+Generates the items for the single-forward-pass rule tasks.
 
-    python generate.py --out data/generated.jsonl --seed 0     # 40 items per (family, depth) cell
+    python generate.py --seed 0        writes 40 items per (family, level) cell to data/generated.jsonl
 
-A level is a depth on the grid shared by all families (DEPTHS). Within each (family, level) cell the gold answers
-are stratified so every answer is equally frequent, and the input is solved backwards from the wanted answer.
+There are four families. Each is a small system whose rules are written out in full in the prompt, and each item
+asks for the result of running the system on a one-token input for a set number of steps: a permutation of the
+letters applied k times, a chain of k word-to-word maps, a word of k permutations run on a five-state machine, and
+a two-term recurrence over digits run for k terms. Every step is a bijection, so no step loses information and k
+steps never collapse into fewer.
 
-Every prompt text in this file (HEADER, TRAILER, POEM_TRAILER and each family's rule wording) was signed off by the
-author word for word. Do not edit any of it without going back to them.
+The depth grid is shared by all families, so a level means the same number of steps everywhere. Within each
+(family, level) cell the answers are balanced by construction: the wanted answers are laid out first, and each
+input is found by running the system backwards from its answer.
+
+The prompt texts in this file, the header, the trailers and each family's rule wording, were signed off word for
+word by the author. Don't change them without going back to them.
 """
 from __future__ import annotations
 
@@ -32,8 +39,8 @@ HEADER = (
     "extra positions, so please ignore them and answer as before. Please never write out working or intermediate "
     "steps, even if your answer is a guess. Thanks for helping with this."
 )
-# {phrase} names the item's answer space (answer_phrase). The poem trailer replaces the answer trailer at run time,
-# so that even in the poem condition nothing but filler ever follows the input.
+# {phrase} is filled by answer_phrase. At run time the poem condition swaps TRAILER for POEM_TRAILER, so even then
+# nothing but filler follows the input.
 TRAILER = "Please answer with just {phrase}, nothing else, straight away, and without writing out any intermediate steps."
 POEM_TRAILER = ("Before you answer, please write a short poem (around 100 words) about a dog. "
                 "Then on a new line give just the answer as {phrase}, nothing else.")
@@ -89,8 +96,8 @@ CHAIN_VOCAB = [
     ["ruby", "opal", "jade", "onyx", "pearl", "topaz", "amber", "coral", "ivory", "agate"],
     ["tulip", "rose", "lily", "daisy", "iris", "poppy", "lotus", "orchid", "peony", "violet"],
 ]
-# A word in two layers would appear twice as a key, and a reader resolving it by position would take a wrong hop
-# for reasons unrelated to depth.
+# The layers must be disjoint. A word in two layers would appear twice as a key, and a reader that resolves it by
+# position would take a wrong hop for a reason unrelated to depth.
 assert len({w for v in CHAIN_VOCAB for w in v}) == sum(len(v) for v in CHAIN_VOCAB), "CHAIN_VOCAB layers overlap"
 
 
@@ -134,10 +141,11 @@ NUMBER_WORD = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
 
 
 def gen_state_machine(rng: random.Random, id_: str, seq_len: int, want_answer: str):
-    """The symbol permutations are uniform (a fixed-point-free symbol would rule out the one-step states and shift
-    partial simulation away from chance), the word never repeats a symbol twice in a row (a permutation returns a
-    state after two identical steps with probability 2/5, which let "stop two symbols early" beat chance), and a
-    symbol equal to the identity, two equal symbols, or a composite equal to the identity are redrawn."""
+    """Each symbol is a uniformly random permutation of the states. Fixed-point-free symbols would rule out the
+    one-step states and push partial simulation away from chance, so they are not used. The word never repeats a
+    symbol twice in a row, because a permutation returns to the same state after two identical steps two times in
+    five, which let a simulator that stopped two symbols early beat chance. A symbol equal to the identity, two
+    identical symbols, or a whole word equal to the identity are redrawn."""
     states = list(range(N_STATES))
     for _ in range(1000):
         trans, perms = {}, []
@@ -184,9 +192,10 @@ def gen_state_machine(rng: random.Random, id_: str, seq_len: int, want_answer: s
 # sequence_mod: a two-term recurrence through a stated permutation f, k terms after the input
 # --------------------------------------------------------------------------
 def gen_sequence_mod(rng: random.Random, id_: str, steps: int, want_answer: str):
-    """term n = (f(term n-1) + term n-2) mod 10 with a random permutation f, so there is no closed form (a linear
-    recurrence such as Fibonacci mod 10 has one). The pair map (a, b) -> (b, f(b) + a) is a bijection, so orbits
-    never collapse; an orbit that returns to its starting pair before the answer term is rejected."""
+    """term n = (f(term n-1) + term n-2) mod 10 with a random permutation f. Going through f rather than adding the
+    terms directly means there is no closed form to read off, which Fibonacci mod 10 has. The step on pairs,
+    (a, b) -> (b, f(b) + a), is a bijection, so orbits never merge. An orbit that returns to its starting pair
+    before the answer term is redrawn."""
     for _ in range(500):
         T = list(range(10))
         rng.shuffle(T)
@@ -222,9 +231,10 @@ def gen_sequence_mod(rng: random.Random, id_: str, steps: int, want_answer: str)
 # iterate_map: one permutation of the 26 letters applied k times
 # --------------------------------------------------------------------------
 def gen_iterate_map(rng: random.Random, id_: str, steps: int, want_answer: str):
-    """The permutation is a single 26-cycle, so k applications are k genuine lookups for every k <= 13 (on an n-cycle
-    f^k = f^-(n-k), so a short cycle turns a deep item into a few backward lookups). Cycles with three or more
-    alphabetical-neighbour entries (g(L) = L+1 or L-1) are redrawn so a Caesar-shift prior has nothing to use."""
+    """The permutation is a single 26-cycle, so applying g k times is k genuine steps for every k up to 13. On a
+    shorter cycle of length n, g^k equals g^-(n-k), and a deep item becomes a few backward lookups. Cycles with
+    three or more entries of the form g(L) = L+1 or L-1 are redrawn, so a Caesar-shift guess has nothing to work
+    with."""
     assert 1 <= steps <= 13
     n = len(LETTERS)
     for _ in range(200):

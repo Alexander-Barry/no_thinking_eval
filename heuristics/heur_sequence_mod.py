@@ -1,8 +1,8 @@
-"""Shallow heuristics for sequence_mod: term n = (f(term n-1) + term n-2) mod 10 with a stated permutation f.
+"""Shallow heuristics for sequence_mod, the recurrence term n = (f(term n-1) + term n-2) mod 10 with a stated
+permutation f.
 
-Rules: "Term 1 is a. Term 2 is the input digit." / "Let f be the following permutation ...: f(0) = 7, ..." /
-"Answer with term k+2." Every heuristic parses only the rules and the input: early terms, single reads of f,
-arithmetic closed forms that ignore f, and stopping early.
+Every heuristic reads only the rules and the input. Each is an early term, a single read of f, an arithmetic closed
+form that ignores f, or the recurrence stopped early.
 """
 from __future__ import annotations
 

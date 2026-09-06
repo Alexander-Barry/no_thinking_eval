@@ -1,8 +1,9 @@
-"""Shallow heuristics for state_machine: 5 states, permutations a-f, a word applied to the input state.
+"""Shallow heuristics for state_machine: five states, six permutations named a to f, and a word applied to the input
+state.
 
-Rules: "a is given by: a(0) = 2, ..." and "Answer with a d e (x_0)", where the rightmost permutation is applied
-first, so the order of application is the reverse of the written word. Every heuristic reads the start state and
-applies at most two transitions, or reduces the word to symbol counts (order-blind closed forms).
+The word is written in composition order, so its rightmost letter is applied first. Each heuristic reads the start
+state and applies at most two transitions, or reduces the word to symbol counts and applies each symbol as often
+as it occurs, which is exact only when the symbols commute.
 """
 from __future__ import annotations
 

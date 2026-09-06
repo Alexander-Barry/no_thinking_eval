@@ -1,8 +1,9 @@
-"""Shallow heuristics for chain_lookup: k maps g_1..g_k of ten entries each over disjoint word layers, the last to digits.
+"""Shallow heuristics for chain_lookup: k maps g_1 to g_k of ten entries each over disjoint word layers, the last one
+to digits.
 
-Rules: "g_1 is given by: g_1(dog) = red, ..." per map. Each map is listed in a random key order and the entries
-are shuffled independently, so a row index carries no information across maps; the heuristics below check that
-(row alignment after 0, 1 or 2 lookups), plus constant, positional, alphabetical and frequency cues.
+Each map is listed in a random key order with its values shuffled independently, so a row index carries nothing
+from one map to the next. The heuristics check that, by aligning rows after zero, one or two lookups, and try
+constants, positions in the last map, alphabetical rank and digit frequency.
 """
 from __future__ import annotations
 

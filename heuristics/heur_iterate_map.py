@@ -1,10 +1,10 @@
-"""Shallow heuristics for iterate_map: one permutation g of the letters (a single 26-cycle) applied k times.
+"""Shallow heuristics for iterate_map, where one permutation g of the letters is applied k times.
 
-Everything is parsed from the rules, the input and the answer space. "Row" means position in the listing order of
-g, which is alphabetical, so row arithmetic is also letter arithmetic (a Caesar shift).
-
-Groups: depth-j lookups forward and backward; listing-position cues; misreadings of "apply k times" as arithmetic;
-textual frequency; exclusion of letters the cycle structure rules out (a chance uplift rather than a shortcut).
+Every heuristic reads only the rules, the input and the answer space. "Row" means position in the listing of g,
+which is alphabetical, so row arithmetic is also a Caesar shift. There are lookups of depth one to three forwards
+and backwards, cues from the listing position, misreadings of "apply k times" as letter arithmetic, letter
+frequency in the prompt, and exclusion of the letters that the cycle structure rules out, which lifts chance a
+little without computing anything.
 """
 from __future__ import annotations
 

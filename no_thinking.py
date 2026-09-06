@@ -1,34 +1,55 @@
 """
-Single-forward-pass rule tasks as an Inspect eval.
+Single-forward-pass rule tasks.
+
+This eval measures how much a model can reason in a single forward pass, without generating any tokens
+first. Thinking is turned off and the answer is read from the first token the model produces.
+
+To make that measurable, every question has a known serial depth. The prompt sets out the rules of a small
+system, such as a permutation of the alphabet or a five-state machine, and then gives a one-token input. The
+answer is reached from the input in a fixed number of steps, each one application of the rules that needs the
+result of the step before it. A model that can carry k such steps in one forward pass should be accurate up
+to depth k and at chance beyond it. There are four families of rules on a shared grid of depths from 1 to 20,
+each built so that the k steps never collapse into fewer.
+
+Thinking is turned off with Inspect's reasoning_effort="none", which maps to each provider's thinking-off
+setting and does nothing on models that have no thinking mode. The output budget is four tokens rather than
+one only because some tokenizers emit a digit as two tokens. Only the first visible token is compared with
+the answer. If it is not in the answer space, because the model began an explanation instead, the item is
+wrong and is also counted in the cell's off_space rate, so failing and not complying can be told apart.
+
+Nothing follows the input in the prompt, because every position after it is extra computation with access to
+the input. The filler condition adds exactly that on purpose: N copies of " -", one token each on every
+tokenizer tested, appended after the input. The same filler placed before the input line is the control, as
+those positions cannot see the input. The poem condition is filler the model generates itself: it is asked
+for a short poem about a dog before the answer, the last line of its output is scored, and the budget rises
+to 400 tokens. Each score also records the number of reasoning blocks, the output token count and the stop
+reason, so a run can be checked afterwards for reasoning that slipped through.
+
+Results are reported per (family, level) cell and never pooled, because the cells differ in depth and in
+chance floor: 1/26 for letters, 1/10 for digits, 1/5 for the five states. A level is a position on the grid
+1 2 3 4 6 8 12 16 20, so level 5 means depth 6 in every family, and a family that cannot build a depth simply
+lacks that level. Within each cell the answers are balanced, so favouring a common answer earns nothing.
+
+Usage:
 
     inspect eval no_thinking.py --model anthropic/claude-opus-5
     inspect eval no_thinking.py --model openai/gpt-5.5 -T filler=1000
     inspect eval no_thinking.py --model google/gemini-3-pro -T poem=true
     inspect eval no_thinking.py --model anthropic/claude-haiku-4-5 -T families=chain_lookup,iterate_map -T levels=1,2,3
 
-What is measured: whether a model can apply k in-context rules in ONE forward pass. Thinking is disabled
-(reasoning_effort="none"), the answer budget is 4 tokens, and the FIRST visible token is the answer. Every item
-has a single-token input and a single-token answer drawn uniformly from its answer space; nothing follows the
-input line except optional filler tokens.
+Task parameters, set with -T name=value:
 
-Task parameters (-T name=value):
-  filler            number of one-token pause units appended after the input (0, 100, 1000 ...). Default 0.
-  filler_position   "after" (default) or "before": before the Input line is the causal control (cannot see the input).
-  filler_unit       the unit; " -" is one token per unit on every tokenizer tested. Default " -".
-  poem              true = generated-filler condition: the trailer asks for a ~100-word poem about a dog before the
-                    answer; the last output line is scored. Default false.
-  addressee         name in the greeting ("Hello <name>, ..."). Default: inferred from the model id
-                    (claude -> Claude, gemini/gemma -> Gemini, gpt/o-series -> ChatGPT); required for other providers.
-  reasoning_effort  passed to the provider; "none" disables thinking on Claude 4.7+ and is a no-op on models without
-                    thinking. Some OpenAI reasoning models only accept "minimal". Default "none".
-  temperature       sampling temperature, or omit for the provider default (models that reject it must omit it).
-  families, levels  comma-separated filters, e.g. families=chain_lookup,state_machine levels=1,2,3,4.
-  data              path to the items file. Default: data/generated.jsonl next to this module.
-
-Metrics are reported PER (family, level) CELL and never pooled across levels: a level is a depth on a grid shared by
-all families (1 2 3 4 6 8 12 16 20 compositions), and families have different chance floors (0.04 letters, 0.10
-digits, 0.20 five states). For each cell: accuracy, off_space (share of answers whose first token is not in the
-answer space, i.e. the model started writing something else), chance, reasoning_blocks and output_tokens.
+  filler            How many filler units to add. Default 0.
+  filler_position   "after" the input (default) or "before" the Input line, the control.
+  filler_unit       The unit repeated filler times. Default " -".
+  poem              true for the poem condition. Default false.
+  addressee         The name in the greeting. The data greets Claude, and other models are greeted by their
+                    own name so that every model reads the same prompt apart from the name. Inferred from the
+                    model id for Claude, Gemini and ChatGPT models, required for anything else.
+  reasoning_effort  Passed to the provider. Default "none". Some OpenAI reasoning models only accept "minimal".
+  temperature       Sampling temperature. Omitted by default, and must be omitted for models that reject it.
+  families, levels  Comma-separated filters, e.g. families=chain_lookup,state_machine levels=1,2,3,4.
+  data              Path to an items file. Default: data/generated.jsonl next to this module.
 """
 from __future__ import annotations
 
@@ -91,7 +112,7 @@ def with_filler(prompt: str, n: int, unit: str, position: str) -> str:
 
 
 def normalise(resp: str, answer_space: list[str]) -> str:
-    """First whitespace-separated token, stripped of quotes and punctuation; case-folded into the answer space."""
+    """The first whitespace-separated token, stripped of quotes and punctuation and case-folded into the answer space."""
     s = resp.strip().strip("\"'`*.:;,!()[]{} \n\t")
     tok = s.split()[0] if s.split() else ""
     tok = tok.strip("\"'`*.:;,!()[]{}")
@@ -150,27 +171,27 @@ def _mean_of(scores: list[SampleScore], key: str, from_sample: bool = False) -> 
 
 @metric
 def off_space() -> Metric:
-    """Share of answers whose first token was not in the answer space (the model started writing something else)."""
+    """Share of answers whose first token was not in the answer space: the model began something other than the answer."""
     return lambda scores: _mean_of(scores, "off_space")
 
 
 @metric
 def chance() -> Metric:
-    """The cell's chance floor (1 / answer-space size), so accuracy can be read against it."""
+    """The cell's chance floor, one over the size of the answer space, so accuracy can be read against it."""
     return lambda scores: _mean_of(scores, "chance", from_sample=True)
 
 
 @metric
 def reasoning_blocks() -> Metric:
-    """Share of samples whose output contained ANY reasoning content. Must be 0 for a single-forward-pass
-    measurement; a non-zero value means the provider reasoned despite reasoning_effort='none'."""
+    """Share of samples whose output contained any reasoning content. It must be 0. Anything else means the provider
+    reasoned despite the setting, and the run is not a single-forward-pass measurement."""
     return lambda scores: _mean_of(scores, "reasoned")
 
 
 @metric
 def output_tokens() -> Metric:
-    """Mean output tokens per sample, including any hidden reasoning tokens the provider bills: bounds hidden
-    computation. Expect 1-4 in the token-budget condition (digit answers carry one invisible leading token)."""
+    """Mean output tokens per sample, including hidden reasoning tokens the provider bills, which bounds hidden
+    computation. Expect 1 to 4 with the token budget, since a digit can cost two tokens."""
     return lambda scores: _mean_of(scores, "output_tokens")
 
 
@@ -180,9 +201,9 @@ def output_tokens() -> Metric:
                  grouped(reasoning_blocks(), "cell", all=False, name_template="{group_name} reasoning_blocks"),
                  grouped(output_tokens(), "cell", all=False, name_template="{group_name} output_tokens")])
 def first_token(poem: bool) -> Scorer:
-    """The first visible token is the answer (the last non-empty line in the poem condition). Besides the verdict,
-    the score records what is needed to audit that no reasoning happened: reasoning block count, token usage,
-    stop reason, the raw completion and the greeting name used."""
+    """Compares the first visible token with the answer, or the last non-empty line in the poem condition. The score
+    also records what is needed to check that no reasoning happened: the reasoning block count, the token usage,
+    the stop reason, the raw completion and the greeting name."""
     async def score(state: TaskState, target: Target) -> Score:
         completion = state.output.completion or ""
         text = completion

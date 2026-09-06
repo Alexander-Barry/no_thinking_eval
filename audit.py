@@ -1,14 +1,17 @@
 """
-Shortcut audit: score cheap, shallow heuristics against the gold answers, so that a model's result on a cell can be
-compared with what needs no depth at all.
+Scores shallow heuristics against the gold answers, so that a model's accuracy on a cell can be compared with what
+needs no depth at all.
 
-    python audit.py            # prints a table per family, writes results/baselines.json
+    python audit.py            prints a table per family and writes results/baselines.json
 
-Two generic baselines (the most common gold answer in the cell; the first option of the answer space) plus the
-family-specific heuristics in heuristics/heur_<family>.py, each exposing FAMILY and heuristics() -> {name: fn},
-where fn(item) returns a predicted answer or None (abstain; scored as chance). The best accuracy per cell and the
-heuristic that achieved it go to results/baselines.json. After changing a generator, every heuristic should stay at
-chance on every cell whose depth exceeds what the heuristic computes.
+Two generic baselines apply to every family: the most common answer in the cell, and the first option of the answer
+space. The rest live in heuristics/heur_<family>.py, one module per family. Each exposes FAMILY and heuristics(),
+a dict from a name to a function that takes an item and returns a predicted answer, or None to abstain, which is
+scored as chance. The best accuracy in each cell and the heuristic that achieved it are written to
+results/baselines.json.
+
+The point is to catch a generator that leaks. After changing one, run the audit and check that every heuristic sits
+at chance on the cells deeper than what it computes: a one-step lookup should solve depth 1 and nothing else.
 """
 from __future__ import annotations
 

@@ -2,7 +2,7 @@ __pycache__/
 *.pyc
 logs/
 .inspect/
-results/*.jsonl
+# never commit keys
 *.key
 *.txt
 !requirements.txt

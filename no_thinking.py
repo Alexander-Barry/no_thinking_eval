@@ -1,10 +1,10 @@
 """
 Single-forward-pass rule tasks as an Inspect eval.
 
-    inspect eval inspect_eval/no_thinking.py --model anthropic/claude-opus-5
-    inspect eval inspect_eval/no_thinking.py --model openai/gpt-5.5 -T filler=1000
-    inspect eval inspect_eval/no_thinking.py --model google/gemini-3-pro -T poem=true
-    inspect eval inspect_eval/no_thinking.py --model anthropic/claude-haiku-4-5 -T families=chain_lookup,iterate_map -T levels=1,2,3
+    inspect eval no_thinking.py --model anthropic/claude-opus-5
+    inspect eval no_thinking.py --model openai/gpt-5.5 -T filler=1000
+    inspect eval no_thinking.py --model google/gemini-3-pro -T poem=true
+    inspect eval no_thinking.py --model anthropic/claude-haiku-4-5 -T families=chain_lookup,iterate_map -T levels=1,2,3
 
 What is measured: whether a model can apply k in-context rules in ONE forward pass. Thinking is disabled
 (reasoning_effort="none"), the answer budget is 4 tokens, and the FIRST visible token is the answer. Every item
@@ -28,7 +28,7 @@ Task parameters (-T name=value):
 Metrics are reported PER (family, level) CELL and never pooled across levels: a level is a depth on a grid shared by
 all families (1 2 3 4 6 8 12 16 20 compositions), and families have different chance floors (0.04 letters, 0.10
 digits, 0.20 five states). For each cell: accuracy, off_space (share of answers whose first token is not in the
-answer space, i.e. the model started writing something else), and chance.
+answer space, i.e. the model started writing something else), chance, reasoning_blocks and output_tokens.
 """
 from __future__ import annotations
 
@@ -38,23 +38,23 @@ from pathlib import Path
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
-from inspect_ai.model import ChatMessageUser, GenerateConfig
+from inspect_ai.model import ChatMessageUser, ContentReasoning, GenerateConfig
 from inspect_ai.scorer import (CORRECT, INCORRECT, Metric, SampleScore, Score, Scorer, Target, accuracy, grouped, metric,
                                scorer)
 from inspect_ai.solver import Generate, Solver, TaskState, generate, solver
 
+from generate import HEADER, POEM_TRAILER, TRAILER
+
 HERE = Path(__file__).resolve().parent
 DEFAULT_DATA = HERE / "data" / "generated.jsonl"
 
-# ----------------------------------------------------------------------------------------------------------------
-# Prompt helpers (the same functions as in generate.py; the wording itself lives in the data file)
-# ----------------------------------------------------------------------------------------------------------------
-ADDRESSEE = "Claude"  # the data is rendered greeting Claude; other providers get their own name at send time
+# The data greets Claude; a model from another provider gets its own name at send time, so every model reads the
+# same prompt apart from the name.
+GREETING = "Hello Claude,"
+assert HEADER.startswith(GREETING)
 ADDRESSEE_BY_PREFIX = [("claude", "Claude"), ("gemini", "Gemini"), ("gemma", "Gemini"),
                        ("gpt", "ChatGPT"), ("chatgpt", "ChatGPT"), ("o1", "ChatGPT"), ("o3", "ChatGPT"), ("o4", "ChatGPT")]
-POEM_TRAILER = ("Before you answer, please write a short poem (around 100 words) about a dog. "
-                "Then on a new line give just the answer as {phrase}, nothing else.")
-_TRAILER_RE = re.compile(r"Please answer with just (.+?), nothing else, straight away, and without writing out any intermediate steps\.")
+_TRAILER_RE = re.compile(re.escape(TRAILER).replace(re.escape("{phrase}"), "(.+?)"))
 
 
 def addressee_for(model_name: str) -> str | None:
@@ -66,13 +66,13 @@ def addressee_for(model_name: str) -> str | None:
 
 
 def readdress(prompt: str, name: str) -> str:
-    head = f"Hello {ADDRESSEE},"
-    if not prompt.startswith(head):
+    if not prompt.startswith(GREETING):
         raise ValueError("prompt does not start with the expected greeting")
-    return prompt if name == ADDRESSEE else f"Hello {name}," + prompt[len(head):]
+    return f"Hello {name}," + prompt[len(GREETING):]
 
 
 def with_poem(prompt: str) -> str:
+    """The same prompt with the answer trailer replaced by the poem trailer (same answer phrase)."""
     m = _TRAILER_RE.search(prompt)
     if not m:
         raise ValueError("prompt has no recognised answer trailer")
@@ -91,7 +91,7 @@ def with_filler(prompt: str, n: int, unit: str, position: str) -> str:
 
 
 def normalise(resp: str, answer_space: list[str]) -> str:
-    """First whitespace-separated token, stripped of quotes and punctuation (the research scorer's rule)."""
+    """First whitespace-separated token, stripped of quotes and punctuation; case-folded into the answer space."""
     s = resp.strip().strip("\"'`*.:;,!()[]{} \n\t")
     tok = s.split()[0] if s.split() else ""
     tok = tok.strip("\"'`*.:;,!()[]{}")
@@ -102,26 +102,22 @@ def normalise(resp: str, answer_space: list[str]) -> str:
     return tok
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Dataset
-# ----------------------------------------------------------------------------------------------------------------
 def load_dataset(path: Path, families: set[str] | None, levels: set[int] | None) -> MemoryDataset:
     samples = []
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         it = json.loads(line)
-        level = it["difficulty"]["level"]
+        level, depth = it["difficulty"]["level"], it["difficulty"]["depth"]
         if families and it["family"] not in families:
             continue
         if levels and level not in levels:
             continue
-        knob = it["difficulty"].get("knob_value", "")
         samples.append(Sample(
             id=it["id"], input=it["prompt"], target=it["answer"],
             metadata={
-                "family": it["family"], "level": level, "knob": it["difficulty"].get("knob", ""), "knob_value": knob,
-                "cell": f"{it['family']} L{level} (depth {knob})",
+                "family": it["family"], "level": level, "depth": depth,
+                "cell": f"{it['family']} L{level} (depth {depth})",
                 "answer_space": it["answer_space"], "chance": 1 / len(it["answer_space"]),
                 "rationale": it["rationale"],
             }))
@@ -130,11 +126,9 @@ def load_dataset(path: Path, families: set[str] | None, levels: set[int] | None)
     return MemoryDataset(samples, name="no_thinking")
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Solver: rewrite the prompt for this model and condition, then one generate call
-# ----------------------------------------------------------------------------------------------------------------
 @solver
 def prepare_prompt(filler: int, filler_position: str, filler_unit: str, poem: bool, addressee: str | None) -> Solver:
+    """Rewrite the stored prompt for this model and condition: greeting name, poem trailer, filler."""
     async def solve(state: TaskState, generate_fn: Generate) -> TaskState:
         name = addressee or addressee_for(state.model.name)
         if not name:
@@ -149,52 +143,35 @@ def prepare_prompt(filler: int, filler_position: str, filler_unit: str, poem: bo
     return solve
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Scorer and per-cell metrics
-# ----------------------------------------------------------------------------------------------------------------
+def _mean_of(scores: list[SampleScore], key: str, from_sample: bool = False) -> float:
+    vals = [float(((s.sample_metadata if from_sample else s.score.metadata) or {}).get(key) or 0) for s in scores]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
 @metric
 def off_space() -> Metric:
     """Share of answers whose first token was not in the answer space (the model started writing something else)."""
-    def compute(scores: list[SampleScore]) -> float:
-        vals = [bool((s.score.metadata or {}).get("off_space", False)) for s in scores]
-        return sum(vals) / len(vals) if vals else 0.0
-    return compute
+    return lambda scores: _mean_of(scores, "off_space")
 
 
 @metric
 def chance() -> Metric:
     """The cell's chance floor (1 / answer-space size), so accuracy can be read against it."""
-    def compute(scores: list[SampleScore]) -> float:
-        vals = [float((s.sample_metadata or {}).get("chance", 0.0)) for s in scores]
-        return sum(vals) / len(vals) if vals else 0.0
-    return compute
+    return lambda scores: _mean_of(scores, "chance", from_sample=True)
 
 
 @metric
 def reasoning_blocks() -> Metric:
-    """Share of samples whose output contained ANY reasoning/thinking content. Must be 0 for a single-forward-pass
+    """Share of samples whose output contained ANY reasoning content. Must be 0 for a single-forward-pass
     measurement; a non-zero value means the provider reasoned despite reasoning_effort='none'."""
-    def compute(scores: list[SampleScore]) -> float:
-        vals = [bool((s.score.metadata or {}).get("reasoning_blocks", 0)) for s in scores]
-        return sum(vals) / len(vals) if vals else 0.0
-    return compute
+    return lambda scores: _mean_of(scores, "reasoned")
 
 
 @metric
 def output_tokens() -> Metric:
-    """Mean output tokens per sample (includes any hidden reasoning tokens the provider bills): bounds hidden
-    computation. Expect 1-4 for the token-budget condition (digit answers carry one invisible leading token)."""
-    def compute(scores: list[SampleScore]) -> float:
-        vals = [float((s.score.metadata or {}).get("output_tokens") or 0) for s in scores]
-        return sum(vals) / len(vals) if vals else 0.0
-    return compute
-
-
-def _reasoning_block_count(state: TaskState) -> int:
-    content = state.output.message.content if state.output and state.output.message else ""
-    if isinstance(content, str):
-        return 0
-    return sum(1 for c in content if type(c).__name__ == "ContentReasoning")
+    """Mean output tokens per sample, including any hidden reasoning tokens the provider bills: bounds hidden
+    computation. Expect 1-4 in the token-budget condition (digit answers carry one invisible leading token)."""
+    return lambda scores: _mean_of(scores, "output_tokens")
 
 
 @scorer(metrics=[grouped(accuracy(), "cell", all=False, name_template="{group_name} accuracy"),
@@ -203,51 +180,46 @@ def _reasoning_block_count(state: TaskState) -> int:
                  grouped(reasoning_blocks(), "cell", all=False, name_template="{group_name} reasoning_blocks"),
                  grouped(output_tokens(), "cell", all=False, name_template="{group_name} output_tokens")])
 def first_token(poem: bool) -> Scorer:
-    """First visible token is the answer (last non-empty line in the poem condition). Besides the verdict, the score
-    records everything needed to audit that no reasoning happened: reasoning block count, output token usage,
+    """The first visible token is the answer (the last non-empty line in the poem condition). Besides the verdict,
+    the score records what is needed to audit that no reasoning happened: reasoning block count, token usage,
     stop reason, the raw completion and the greeting name used."""
     async def score(state: TaskState, target: Target) -> Score:
         completion = state.output.completion or ""
         text = completion
-        if poem:  # everything up to the last non-empty line is the poem; the last line is the answer
+        if poem:
             lines = [l for l in text.strip().splitlines() if l.strip()]
             text = lines[-1] if lines else ""
         space = list(state.metadata["answer_space"])
         tok = normalise(text, space)
+        content = state.output.message.content
+        n_reasoning = 0 if isinstance(content, str) else sum(isinstance(c, ContentReasoning) for c in content)
         usage = state.output.usage
         return Score(value=CORRECT if tok == target.text else INCORRECT, answer=tok,
                      metadata={"off_space": tok not in space,
-                               "reasoning_blocks": _reasoning_block_count(state),
+                               "reasoning_blocks": n_reasoning,
+                               "reasoned": n_reasoning > 0,
                                "output_tokens": usage.output_tokens if usage else None,
-                               "reasoning_tokens": getattr(usage, "reasoning_tokens", None) if usage else None,
+                               "reasoning_tokens": usage.reasoning_tokens if usage else None,
                                "stop_reason": state.output.stop_reason,
                                "addressee": state.metadata.get("addressee"),
                                "raw": completion[:400] if poem else completion[:200]})
     return score
 
 
-# ----------------------------------------------------------------------------------------------------------------
-# Task
-# ----------------------------------------------------------------------------------------------------------------
 @task
 def no_thinking(filler: int = 0, filler_position: str = "after", filler_unit: str = " -", poem: bool = False,
                 addressee: str | None = None, reasoning_effort: str | None = "none", temperature: float | None = None,
                 families: str | None = None, levels: str | None = None, data: str | None = None) -> Task:
-    # -T values arrive as str, int or list depending on how they were typed ("1,2" / 3 / [1, 2])
-    def as_list(v):
-        if v is None:
-            return None
+    def as_list(v) -> list[str]:  # -T values arrive as str, int or list depending on how they were typed
         if isinstance(v, (list, tuple, set)):
             return [str(x) for x in v]
         return [x.strip() for x in str(v).split(",") if x.strip()]
     fams = set(as_list(families)) if families is not None else None
     lvls = {int(x) for x in as_list(levels)} if levels is not None else None
-    dataset = load_dataset(Path(data) if data else DEFAULT_DATA, fams, lvls)
-    config = GenerateConfig(max_tokens=400 if poem else 4, reasoning_effort=reasoning_effort, temperature=temperature)
     return Task(
-        dataset=dataset,
+        dataset=load_dataset(Path(data) if data else DEFAULT_DATA, fams, lvls),
         solver=[prepare_prompt(filler, filler_position, filler_unit, poem, addressee), generate()],
         scorer=first_token(poem),
-        config=config,
+        config=GenerateConfig(max_tokens=400 if poem else 4, reasoning_effort=reasoning_effort, temperature=temperature),
         name="no_thinking",
     )

@@ -14,7 +14,7 @@
   },
   "4": {
    "acc": 0.15,
-   "name": "iterate the table k times on the input"
+   "name": "iterate f k times on the input"
   },
   "5": {
    "acc": 0.2,
@@ -77,12 +77,12 @@
    "name": "first_two_steps"
   },
   "3": {
-   "acc": 0.225,
-   "name": "start"
+   "acc": 0.35,
+   "name": "count_product_order_blind"
   },
   "4": {
-   "acc": 0.35,
-   "name": "first_two_steps"
+   "acc": 0.375,
+   "name": "count_product_order_blind"
   },
   "5": {
    "acc": 0.3,
@@ -101,8 +101,8 @@
    "name": "first_step"
   },
   "9": {
-   "acc": 0.3,
-   "name": "row_mode"
+   "acc": 0.375,
+   "name": "count_product_order_blind"
   }
  },
  "chain_lookup": {

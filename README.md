@@ -17,7 +17,7 @@ never secretly fewer and no information is lost along the way:
 
 A **level** is a depth on that shared grid (level 1 = depth 1, ..., level 9 = depth 20), so a level means the same
 number of compositions in every family; a family simply lacks the levels whose depth it cannot construct.
-40 items per (family, level) cell, 31 cells, 1320 items in `data/generated.jsonl`.
+40 items per (family, level) cell, 33 cells, 1320 items in `data/generated.jsonl`.
 
 ## Run
 
@@ -68,18 +68,20 @@ little more, and the poem is worth about a hundred pause tokens. Every family is
 model tried, with or without filler. The wrong answers on the deeper rungs are almost always the right orbit at the
 wrong depth: the model stops one or two compositions short, or overshoots by one.
 
-## Regenerate or extend
+## Files
 
-```
-python generate.py --out data/generated.jsonl --seed 0     # 40 items per cell; --per-level to change
-python audit.py                                            # score the shallow heuristics against gold -> results/baselines.json
-```
-
-`generate.py` holds the four generators, the prompt texts and the depth grid; `audit.py` runs every heuristic in
-`heuristics/` (13-26 per family: positional, 0-step and 1-step, closed-form and textual cues) against the gold
-answers per cell. After any change to a generator, run the audit and check that every heuristic stays at chance on
-the deeper rungs before spending API calls: on earlier versions of these tasks, shortcuts (repeated-symbol
-coincidences, a linear recurrence's closed form, a short cycle's backward lookup) accounted for whole cells.
+- `no_thinking.py`: the Inspect task (dataset loading, prompt rewriting per model and condition, first-token scorer,
+  per-cell metrics).
+- `generate.py`: the four generators, the prompt texts (header, answer trailer, poem trailer, rule wording) and the
+  depth grid. `python generate.py --seed 0` rewrites `data/generated.jsonl` (`--per-level` sets items per cell).
+- `data/generated.jsonl`: one item per line, described by `schema.json`: the prompt as sent (greeting Claude), the
+  rules, input, answer, answer space, `difficulty.level`, `difficulty.depth` and the path from input to answer.
+- `audit.py` and `heuristics/`: the shortcut audit. Every heuristic (13-26 per family: positional, 0-, 1- and 2-step
+  lookups, closed forms, textual cues) is scored against the gold answers per cell; the best per cell goes to
+  `results/baselines.json`. After any change to a generator, run `python audit.py` and check that nothing beats
+  chance on the cells deeper than what the heuristic computes: on earlier versions of these tasks, shortcuts
+  (repeated-symbol coincidences, a linear recurrence's closed form, a short cycle's backward lookup) accounted for
+  whole cells.
 
 Every prompt text (the two-paragraph header, the per-family trailers, the poem trailer, each family's rule wording)
 was signed off by the author. Do not edit the wording without going back to them.

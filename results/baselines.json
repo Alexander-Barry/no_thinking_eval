@@ -1,0 +1,142 @@
+{
+ "sequence_mod": {
+  "1": {
+   "acc": 1.0,
+   "name": "term 3 (one step)"
+  },
+  "2": {
+   "acc": 1.0,
+   "name": "term 4 (two steps)"
+  },
+  "3": {
+   "acc": 0.175,
+   "name": "term 1"
+  },
+  "4": {
+   "acc": 0.15,
+   "name": "iterate the table k times on the input"
+  },
+  "5": {
+   "acc": 0.2,
+   "name": "term 1"
+  },
+  "6": {
+   "acc": 0.175,
+   "name": "(input + term1) mod 10"
+  },
+  "7": {
+   "acc": 0.175,
+   "name": "stop one term short"
+  },
+  "8": {
+   "acc": 0.15,
+   "name": "input + 5"
+  },
+  "9": {
+   "acc": 0.15,
+   "name": "term 4 (two steps)"
+  }
+ },
+ "iterate_map": {
+  "1": {
+   "acc": 1.0,
+   "name": "forward_1"
+  },
+  "2": {
+   "acc": 1.0,
+   "name": "forward_2"
+  },
+  "3": {
+   "acc": 1.0,
+   "name": "forward_3"
+  },
+  "4": {
+   "acc": 0.075,
+   "name": "key_minus_k"
+  },
+  "5": {
+   "acc": 0.075,
+   "name": "last_row_value"
+  },
+  "6": {
+   "acc": 0.1,
+   "name": "row_after_backward_value"
+  },
+  "7": {
+   "acc": 0.225,
+   "name": "key_minus_k"
+  }
+ },
+ "state_machine": {
+  "1": {
+   "acc": 1.0,
+   "name": "first_step"
+  },
+  "2": {
+   "acc": 1.0,
+   "name": "first_two_steps"
+  },
+  "3": {
+   "acc": 0.225,
+   "name": "start"
+  },
+  "4": {
+   "acc": 0.35,
+   "name": "first_two_steps"
+  },
+  "5": {
+   "acc": 0.3,
+   "name": "majority_symbol_step"
+  },
+  "6": {
+   "acc": 0.325,
+   "name": "first_step"
+  },
+  "7": {
+   "acc": 0.3,
+   "name": "start"
+  },
+  "8": {
+   "acc": 0.35,
+   "name": "first_step"
+  },
+  "9": {
+   "acc": 0.3,
+   "name": "row_mode"
+  }
+ },
+ "chain_lookup": {
+  "1": {
+   "acc": 1.0,
+   "name": "row_align_input"
+  },
+  "2": {
+   "acc": 1.0,
+   "name": "hop1_then_row_align_keys"
+  },
+  "3": {
+   "acc": 1.0,
+   "name": "hop2_then_row_align_keys"
+  },
+  "4": {
+   "acc": 0.2,
+   "name": "alpha_rank_as_digit"
+  },
+  "5": {
+   "acc": 0.275,
+   "name": "hop1_row_as_digit"
+  },
+  "6": {
+   "acc": 0.175,
+   "name": "hop1_then_row_align_keys"
+  },
+  "7": {
+   "acc": 0.175,
+   "name": "hop2_then_row_align_keys"
+  },
+  "8": {
+   "acc": 0.175,
+   "name": "row_align_input"
+  }
+ }
+}

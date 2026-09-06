@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "single-pass-rule-task/v1",
+  "title": "Single-forward-pass rule-application task",
+  "description": "A task where the model is shown a small set of in-context rules mapping inputs to a single-token label, then one input, and must answer immediately with one token. Designed to measure latent (non-CoT) computation, scaled by rule count, hop depth, and precedence interactions rather than by tokenization quirks.",
+  "type": "object",
+  "required": ["id", "family", "prompt", "rules", "input", "answer", "answer_space", "difficulty", "representation_dependence"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "description": "Unique id, e.g. family-seed-index."},
+    "family": {
+      "type": "string",
+      "description": "Task family. Procedural families have generators; semantic ones are hand-written.",
+      "enum": [
+        "rule_lookup", "priority_numeric", "priority_semantic", "chain_lookup",
+        "arith_bin", "boolean_numeric", "count_numeric", "count_semantic",
+        "state_machine", "decision_tree_numeric", "decision_tree_semantic",
+        "sequence_mod", "arith_chain", "relation", "era_bin", "continent",
+        "magnitude_bin", "mixed",
+        "logic_flat", "exception_chain", "logic_circuit", "rule_rewrite", "order_chain",
+        "iterate_map", "cond_step"
+      ]
+    },
+    "source": {"type": "string", "enum": ["generated", "handwritten"]},
+    "prompt": {"type": "string", "description": "Fully rendered prompt as sent to the model. Ends by demanding a single-token answer."},
+    "rules": {
+      "type": "array",
+      "description": "Rules in display order. Kept structured so the prompt can be re-templated.",
+      "items": {"type": "string"},
+      "minItems": 1
+    },
+    "input": {"type": "string"},
+    "answer": {
+      "type": "string",
+      "description": "Gold answer. Must be a member of answer_space and a single token in mainstream tokenizers (A-Z, 0-9, or a very common short word).",
+      "pattern": "^([A-Z]|[0-9]|yes|no)$"
+    },
+    "answer_space": {
+      "type": "array",
+      "items": {"type": "string"},
+      "minItems": 2,
+      "description": "All labels the model could legitimately produce. Chance accuracy is 1/len."
+    },
+    "difficulty": {
+      "type": "object",
+      "description": "Knobs that were used to make the item harder. Absent knobs mean 'not applicable'.",
+      "additionalProperties": false,
+      "properties": {
+        "n_rules":  {"type": "integer", "minimum": 1, "description": "Number of rules shown."},
+        "hops":     {"type": "integer", "minimum": 1, "description": "Number of lookups that must be composed (chain_lookup)."},
+        "steps":    {"type": "integer", "minimum": 1, "description": "Sequential operations to simulate (state_machine, sequence_mod, arith_chain)."},
+        "depth":    {"type": "integer", "minimum": 1, "description": "Nesting depth of conditionals (decision_tree)."},
+        "n_predicates": {"type": "integer", "minimum": 1, "description": "Atomic predicates to evaluate (boolean, count)."},
+        "operand_magnitude": {"type": "integer", "minimum": 1, "description": "Approximate size of numbers involved (max operand)."},
+        "knob": {"type": "string", "description": "Name of the one difficulty field this family's ladder varies (v2 ladders)."},
+        "knob_value": {"type": "integer", "description": "Value of that field for this item."},
+        "precedence_matters": {"type": "boolean", "description": "True if the input matches more than one rule and order decides the answer."},
+        "distractors": {"type": "integer", "minimum": 0, "description": "Rules that can never fire for the input."},
+        "world_knowledge": {"type": "string", "enum": ["none", "common", "specific"], "description": "How much factual knowledge the input requires beyond the rules."},
+        "level": {"type": "integer", "minimum": 1, "maximum": 12, "description": "Ladder position. 1-5 is the original ladder; 6+ are hard settings added to find each family's failure point."}
+      }
+    },
+    "representation_dependence": {
+      "type": "string",
+      "enum": ["none", "first_letter", "digits", "spelling"],
+      "description": "Whether the task leans on the surface form of the input. 'none' is the target; 'spelling' items (letter counts etc.) are discouraged because they conflate tokenization with reasoning."
+    },
+    "rationale": {"type": "string", "description": "One-line derivation of the gold answer, for auditing."},
+    "tags": {"type": "array", "items": {"type": "string"}}
+  }
+}

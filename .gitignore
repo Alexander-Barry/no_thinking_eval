@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+logs/
+.inspect/
+results/*.jsonl
+*.key
+*.txt
+!requirements.txt

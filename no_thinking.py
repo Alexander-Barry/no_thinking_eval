@@ -22,8 +22,10 @@ the input. The filler condition adds exactly that on purpose: N copies of " -", 
 tokenizer tested, appended after the input. The same filler placed before the input line is the control, as
 those positions cannot see the input. The poem condition is filler the model generates itself: it is asked
 for a short poem about a dog before the answer, the last line of its output is scored, and the budget rises
-to 400 tokens. Each score also records the number of reasoning blocks, the output token count and the stop
-reason, so a run can be checked afterwards for reasoning that slipped through.
+to 400 tokens. Each score also records whether the item reasoned at all (any reasoning tokens in the provider's
+usage report, or any visible reasoning content), the token counts and the stop reason. The per-cell metric
+"reasoned" must be 0: a cell where more than a few percent of items reasoned is not a single-forward-pass
+measurement, whatever its accuracy.
 
 Results are reported per (family, level) cell and never pooled, because the cells differ in depth and in
 chance floor: 1/26 for letters, 1/10 for digits, 1/5 for the five states. A level is a position on the grid
@@ -52,6 +54,12 @@ Task parameters, set with -T name=value:
                     nothing but cost; the OpenAI Responses API refuses anything below 16.
   families, levels  Comma-separated filters, e.g. families=chain_lookup,state_machine levels=1,2,3,4.
   data              Path to an items file. Default: data/generated.jsonl next to this module.
+  header_insert     Experiments only: a sentence placed just before the header's closing thanks. The signed-off
+                    prompt has none.
+  system_prompt     A system message sent in front of the user message, the same text for every provider. Default
+                    none. Some models only stop reasoning when told to in the system prompt (GPT-6 Astra at effort
+                    "low" reasoned on most recurrence items without one and on none with one), while others refuse
+                    such instructions outright (Fable 5), so check each model on a few items before relying on it.
 """
 from __future__ import annotations
 
@@ -61,7 +69,7 @@ from pathlib import Path
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
-from inspect_ai.model import ChatMessageUser, ContentReasoning, GenerateConfig
+from inspect_ai.model import ChatMessageSystem, ChatMessageUser, ContentReasoning, GenerateConfig
 from inspect_ai.scorer import (CORRECT, INCORRECT, Metric, SampleScore, Score, Scorer, Target, accuracy, grouped, metric,
                                scorer)
 from inspect_ai.solver import Generate, Solver, TaskState, generate, solver
@@ -149,19 +157,28 @@ def load_dataset(path: Path, families: set[str] | None, levels: set[int] | None)
     return MemoryDataset(samples, name="no_thinking")
 
 
+HEADER_END = "Thanks for helping with this."
+
+
 @solver
-def prepare_prompt(filler: int, filler_position: str, filler_unit: str, poem: bool, addressee: str | None) -> Solver:
-    """Rewrite the stored prompt for this model and condition: greeting name, poem trailer, filler."""
+def prepare_prompt(filler: int, filler_position: str, filler_unit: str, poem: bool, addressee: str | None,
+                   header_insert: str | None = None, system_prompt: str | None = None) -> Solver:
+    """Rewrite the stored prompt for this model and condition: greeting name, header insert, poem trailer, filler, and
+    the optional system prompt in front of it."""
     async def solve(state: TaskState, generate_fn: Generate) -> TaskState:
         name = addressee or addressee_for(state.model.name)
         if not name:
             raise ValueError(f"cannot infer the greeting name for model '{state.model}'; pass -T addressee=<Name>")
         prompt = readdress(state.input_text, name)
+        if header_insert:  # experiments only: a sentence placed just before the header's closing thanks
+            assert HEADER_END in prompt
+            prompt = prompt.replace(HEADER_END, header_insert.strip() + " " + HEADER_END, 1)
         if poem:
             prompt = with_poem(prompt)
         prompt = with_filler(prompt, filler, filler_unit, filler_position)
-        state.messages = [ChatMessageUser(content=prompt)]
+        state.messages = ([ChatMessageSystem(content=system_prompt)] if system_prompt else []) + [ChatMessageUser(content=prompt)]
         state.metadata["addressee"] = name
+        state.metadata["system_prompt"] = system_prompt
         return state
     return solve
 
@@ -184,10 +201,17 @@ def chance() -> Metric:
 
 
 @metric
-def reasoning_blocks() -> Metric:
-    """Share of samples whose output contained visible reasoning content. It must be 0. Anything else means the provider
-    reasoned despite the setting, and the run is not a single-forward-pass measurement."""
+def reasoned() -> Metric:
+    """Share of samples that reasoned at all: any reasoning tokens in the provider's usage report, or any visible
+    reasoning content. It must be 0. Anything above a few percent means the setting did not turn thinking off for
+    this model, and the cell is not a single-forward-pass measurement."""
     return lambda scores: _mean_of(scores, "reasoned")
+
+
+@metric
+def reasoning_blocks() -> Metric:
+    """Share of samples whose output contained visible reasoning content."""
+    return lambda scores: _mean_of(scores, "reasoned_visibly")
 
 
 @metric
@@ -207,6 +231,7 @@ def output_tokens() -> Metric:
 @scorer(metrics=[grouped(accuracy(), "cell", all=False, name_template="{group_name} accuracy"),
                  grouped(off_space(), "cell", all=False, name_template="{group_name} off_space"),
                  grouped(chance(), "cell", all=False, name_template="{group_name} chance"),
+                 grouped(reasoned(), "cell", all=False, name_template="{group_name} reasoned"),
                  grouped(reasoning_blocks(), "cell", all=False, name_template="{group_name} reasoning_blocks"),
                  grouped(reasoning_tokens(), "cell", all=False, name_template="{group_name} reasoning_tokens"),
                  grouped(output_tokens(), "cell", all=False, name_template="{group_name} output_tokens")])
@@ -228,12 +253,14 @@ def first_token(poem: bool) -> Scorer:
         n_reasoning = 0 if isinstance(content, str) else sum(
             isinstance(c, ContentReasoning) and not c.redacted for c in content)
         usage = state.output.usage
+        reasoning_tokens = (usage.reasoning_tokens if usage else None) or 0
         return Score(value=CORRECT if tok == target.text else INCORRECT, answer=tok,
                      metadata={"off_space": tok not in space,
                                "reasoning_blocks": n_reasoning,
-                               "reasoned": n_reasoning > 0,
+                               "reasoned_visibly": n_reasoning > 0,
+                               "reasoned": n_reasoning > 0 or reasoning_tokens > 0,
                                "output_tokens": usage.output_tokens if usage else None,
-                               "reasoning_tokens": usage.reasoning_tokens if usage else None,
+                               "reasoning_tokens": reasoning_tokens,
                                "stop_reason": state.output.stop_reason,
                                "addressee": state.metadata.get("addressee"),
                                "raw": completion[:400] if poem else completion[:200]})
@@ -244,7 +271,7 @@ def first_token(poem: bool) -> Scorer:
 def no_thinking(filler: int = 0, filler_position: str = "after", filler_unit: str = " -", poem: bool = False,
                 addressee: str | None = None, reasoning_effort: str | None = "none", temperature: float | None = None,
                 max_tokens: int = 4, families: str | None = None, levels: str | None = None,
-                data: str | None = None) -> Task:
+                data: str | None = None, header_insert: str | None = None, system_prompt: str | None = None) -> Task:
     def as_list(v) -> list[str]:  # -T values arrive as str, int or list depending on how they were typed
         if isinstance(v, (list, tuple, set)):
             return [str(x) for x in v]
@@ -253,7 +280,7 @@ def no_thinking(filler: int = 0, filler_position: str = "after", filler_unit: st
     lvls = {int(x) for x in as_list(levels)} if levels is not None else None
     return Task(
         dataset=load_dataset(Path(data) if data else DEFAULT_DATA, fams, lvls),
-        solver=[prepare_prompt(filler, filler_position, filler_unit, poem, addressee), generate()],
+        solver=[prepare_prompt(filler, filler_position, filler_unit, poem, addressee, header_insert, system_prompt), generate()],
         scorer=first_token(poem),
         config=GenerateConfig(max_tokens=400 if poem else max_tokens, reasoning_effort=reasoning_effort,
                               temperature=temperature),

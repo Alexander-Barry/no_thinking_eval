@@ -59,6 +59,7 @@ Task parameters, set with `-T name=value`:
 | `reasoning_effort` | passed to the provider; some OpenAI reasoning models only accept `minimal` | none |
 | `temperature` | sampling temperature; must be omitted for models that reject it | omitted |
 | `max_tokens` | the output budget. Only the first token is scored, so a larger budget changes nothing but cost; the OpenAI Responses API refuses anything below 16 | 4 |
+| `system_prompt` | a system message sent in front of the user message, the same text for every provider. Some models only stop reasoning when told to here (GPT-6 Astra at effort "low"), others refuse such instructions (Fable 5): check each model on a few items first | none |
 | `families`, `levels` | comma-separated filters | all |
 | `data` | path to an items file | data/generated.jsonl |
 
@@ -71,9 +72,10 @@ Each cell reports:
 - `accuracy`, to be read against the cell's `chance`.
 - `off_space`, the share of answers whose first token was not in the answer space. These count as wrong. The
   rate separates a model that fails from one that does not comply.
-- `reasoning_blocks`, the share of samples whose output contained any reasoning content, and `reasoning_tokens`,
-  the mean reasoning tokens the provider reported. Both must be 0. Anything else means the provider reasoned
-  despite the setting, and the run is not a single-forward-pass measurement.
+- `reasoned`, the share of samples with any reasoning tokens in the provider's usage report or any visible
+  reasoning content. It must be 0 in every cell. A cell where more than a few percent of items reasoned is not a
+  single-forward-pass measurement and should be discarded, whatever its accuracy. `reasoning_tokens` (mean per
+  sample) and `reasoning_blocks` (share with visible reasoning) break the same signal down.
 - `output_tokens`, the mean per sample including any hidden reasoning tokens the provider bills. Expect 1 to 4
   with the token budget and around 100 to 150 for the poem.
 

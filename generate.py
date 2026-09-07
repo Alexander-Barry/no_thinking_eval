@@ -112,6 +112,39 @@ CHAIN_VOCAB = [
     ["puzzle", "kite", "doll", "marble", "yoyo", "domino", "dice", "card", "robot", "teddy"],
     ["algebra", "history", "physics", "biology", "chemistry", "geology", "grammar", "drama", "ethics", "logic"],
     ["beetle", "wasp", "moth", "hornet", "gnat", "termite", "locust", "mantis", "aphid", "flea"],
+    # layers 33-64, added 2026-09-08 for depths 48 and 64
+    ["lion", "tiger", "bear", "wolf", "deer", "zebra", "camel", "otter", "moose", "panda"],
+    ["snake", "lizard", "turtle", "frog", "toad", "newt", "gecko", "iguana", "cobra", "viper"],
+    ["fern", "moss", "ivy", "cactus", "bamboo", "reed", "clover", "thistle", "nettle", "heather"],
+    ["carrot", "potato", "onion", "pepper", "celery", "turnip", "radish", "lettuce", "spinach", "cabbage"],
+    ["basil", "mint", "thyme", "sage", "ginger", "cumin", "nutmeg", "saffron", "dill", "parsley"],
+    ["pudding", "tart", "muffin", "waffle", "pancake", "cookie", "brownie", "custard", "trifle", "mousse"],
+    ["sword", "shield", "spear", "dagger", "lance", "mace", "helmet", "cannon", "catapult", "trident"],
+    ["doctor", "lawyer", "teacher", "chef", "plumber", "painter", "actor", "singer", "dancer", "banker"],
+    ["joy", "anger", "fear", "pride", "grief", "envy", "hope", "shame", "calm", "awe"],
+    ["mother", "father", "sister", "brother", "uncle", "aunt", "cousin", "nephew", "niece", "grandpa"],
+    ["school", "church", "castle", "temple", "museum", "library", "prison", "hospital", "theatre", "stadium"],
+    ["rocket", "glider", "canoe", "yacht", "ferry", "scooter", "wagon", "sled", "tractor", "subway"],
+    ["pillow", "blanket", "curtain", "carpet", "mirror", "clock", "candle", "vase", "basket", "ladder"],
+    ["pencil", "eraser", "stapler", "folder", "envelope", "notebook", "ruler", "marker", "tape", "clip"],
+    ["whale", "dolphin", "octopus", "squid", "crab", "lobster", "shrimp", "oyster", "seal", "walrus"],
+    ["river", "lake", "ocean", "bay", "gulf", "delta", "lagoon", "fjord", "reef", "dune"],
+    ["dress", "skirt", "jacket", "sweater", "jeans", "pyjamas", "apron", "cape", "bikini", "uniform"],
+    ["lung", "liver", "kidney", "brain", "spine", "rib", "skull", "tongue", "tooth", "lip"],
+    ["glass", "plastic", "rubber", "stone", "brick", "clay", "sand", "concrete", "leather", "paper"],
+    ["tempo", "rhythm", "melody", "chord", "scale", "pitch", "tune", "verse", "chorus", "harmony"],
+    ["dawn", "dusk", "noon", "midnight", "sunrise", "sunset", "twilight", "evening", "morning", "night"],
+    ["cherry", "lemon", "melon", "banana", "papaya", "apricot", "coconut", "guava", "lychee", "quince"],
+    ["dragon", "unicorn", "phoenix", "griffin", "mermaid", "goblin", "troll", "giant", "wizard", "witch"],
+    ["king", "queen", "prince", "duke", "knight", "bishop", "baron", "earl", "squire", "jester"],
+    ["dollar", "euro", "yen", "rupee", "franc", "peso", "ruble", "lira", "dinar", "krona"],
+    ["angle", "curve", "vector", "matrix", "prime", "fraction", "radius", "tangent", "cube", "sphere"],
+    ["oven", "stove", "fridge", "toaster", "blender", "grater", "whisk", "sieve", "tongs", "skillet"],
+    ["willow", "poplar", "spruce", "larch", "beech", "hazel", "holly", "juniper", "magnolia", "sequoia"],
+    ["wheat", "barley", "oats", "corn", "rye", "hay", "straw", "millet", "soy", "flax"],
+    ["guitar", "trumpet", "clarinet", "saxophone", "ukulele", "accordion", "bagpipe", "xylophone", "tambourine", "mandolin"],
+    ["laptop", "monitor", "keyboard", "mouse", "printer", "router", "server", "cable", "screen", "pixel"],
+    ["lawn", "hedge", "fence", "gate", "shed", "pond", "patio", "trellis", "wheelbarrow", "sprinkler"],
 ]
 # The layers must be disjoint. A word in two layers would appear twice as a key, and a reader that resolves it by
 # position would take a wrong hop for a reason unrelated to depth.
@@ -279,13 +312,13 @@ def gen_iterate_map(rng: random.Random, id_: str, steps: int, want_answer: str):
 # --------------------------------------------------------------------------
 # Ladder: level k = the k-th depth on the shared grid
 # --------------------------------------------------------------------------
-DEPTHS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32]
+DEPTHS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64]
 
 FAMILY_DEPTHS = {
     "sequence_mod": [1, 2, 3, 4, 6, 8, 12, 16, 20],
     "iterate_map": [1, 2, 3, 4, 6, 8, 12],                  # a 26-cycle is honest only up to depth 13
     "state_machine": [1, 2, 3, 4, 6, 8, 12, 16, 20],
-    "chain_lookup": [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32],  # one vocabulary layer per hop
+    "chain_lookup": [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64],  # one vocabulary layer per hop
 }
 
 GENERATORS = {"sequence_mod": gen_sequence_mod, "iterate_map": gen_iterate_map,

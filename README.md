@@ -14,14 +14,14 @@ depth k and at chance beyond it.
 |---|---|---|---|---|
 | `iterate_map` | a permutation g of the capital letters, a single 26-cycle | apply g | A-Z, chance 0.04 | 1 2 3 4 6 8 12 |
 | `state_machine` | 5 states and 6 permutations of them named a-f; the question gives a word of k letters | apply the next letter's permutation | 0-4, chance 0.20 | 1 2 3 4 6 8 12 16 20 |
-| `chain_lookup` | k maps g_1..g_k of 10 entries each, word to word, the last one to digits | apply the next map | 0-9, chance 0.10 | 1 2 3 4 6 8 12 16 20 24 32 |
+| `chain_lookup` | k maps g_1..g_k of 10 entries each, word to word, the last one to digits | apply the next map | 0-9, chance 0.10 | 1 2 3 4 6 8 12 16 20 24 32 48 64 |
 | `sequence_mod` | a sequence with term n = (f(term n-1) + term n-2) mod 10 for a stated permutation f | compute the next term | 0-9, chance 0.10 | 1 2 3 4 6 8 12 16 20 |
 
 Every step is a bijection, so no step loses information and k steps never collapse into fewer. The depth grid
-(1 2 3 4 6 8 12 16 20 24 32) is shared, so level 5 means depth 6 in every family, and a family that cannot build
+(1 2 3 4 6 8 12 16 20 24 32 48 64) is shared, so level 5 means depth 6 in every family, and a family that cannot build
 a depth simply lacks that level: letters stop at 12 because a 26-cycle is only honest to depth 13, and only chain
-lookup reaches 24 and 32. Within each (family, level) cell the answers are balanced, so favouring a common answer
-earns nothing. There are 40 items per cell, 36 cells and 1440 items in `data/generated.jsonl`.
+lookup reaches 24 to 64. Within each (family, level) cell the answers are balanced, so favouring a common answer
+earns nothing. There are 40 items per cell, 38 cells and 1520 items in `data/generated.jsonl`.
 
 ## Run
 

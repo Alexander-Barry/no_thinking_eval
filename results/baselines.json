@@ -149,6 +149,14 @@
   "11": {
    "acc": 0.225,
    "name": "end_row_align_1hop"
+  },
+  "12": {
+   "acc": 0.175,
+   "name": "hop1_then_row_align_keys"
+  },
+  "13": {
+   "acc": 0.2,
+   "name": "last_map_middle_digit"
   }
  }
 }

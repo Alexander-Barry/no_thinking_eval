@@ -48,6 +48,8 @@ Task parameters, set with -T name=value:
                     model id for Claude, Gemini and ChatGPT models, required for anything else.
   reasoning_effort  Passed to the provider. Default "none". Some OpenAI reasoning models only accept "minimal".
   temperature       Sampling temperature. Omitted by default, and must be omitted for models that reject it.
+  max_tokens        The output budget. Default 4. Only the first token is scored, so a larger budget changes
+                    nothing but cost; the OpenAI Responses API refuses anything below 16.
   families, levels  Comma-separated filters, e.g. families=chain_lookup,state_machine levels=1,2,3,4.
   data              Path to an items file. Default: data/generated.jsonl next to this module.
 """
@@ -183,9 +185,16 @@ def chance() -> Metric:
 
 @metric
 def reasoning_blocks() -> Metric:
-    """Share of samples whose output contained any reasoning content. It must be 0. Anything else means the provider
+    """Share of samples whose output contained visible reasoning content. It must be 0. Anything else means the provider
     reasoned despite the setting, and the run is not a single-forward-pass measurement."""
     return lambda scores: _mean_of(scores, "reasoned")
+
+
+@metric
+def reasoning_tokens() -> Metric:
+    """Mean reasoning tokens per sample as reported by the provider. It must be 0 for the same reason, and it catches
+    providers that reason without returning any reasoning content."""
+    return lambda scores: _mean_of(scores, "reasoning_tokens")
 
 
 @metric
@@ -199,6 +208,7 @@ def output_tokens() -> Metric:
                  grouped(off_space(), "cell", all=False, name_template="{group_name} off_space"),
                  grouped(chance(), "cell", all=False, name_template="{group_name} chance"),
                  grouped(reasoning_blocks(), "cell", all=False, name_template="{group_name} reasoning_blocks"),
+                 grouped(reasoning_tokens(), "cell", all=False, name_template="{group_name} reasoning_tokens"),
                  grouped(output_tokens(), "cell", all=False, name_template="{group_name} output_tokens")])
 def first_token(poem: bool) -> Scorer:
     """Compares the first visible token with the answer, or the last non-empty line in the poem condition. The score
@@ -213,7 +223,10 @@ def first_token(poem: bool) -> Scorer:
         space = list(state.metadata["answer_space"])
         tok = normalise(text, space)
         content = state.output.message.content
-        n_reasoning = 0 if isinstance(content, str) else sum(isinstance(c, ContentReasoning) for c in content)
+        # Redacted reasoning blocks that are only a provider signature (Gemini 3 attaches one to every answer, with
+        # zero thought tokens) do not count; reasoning_tokens covers hidden reasoning.
+        n_reasoning = 0 if isinstance(content, str) else sum(
+            isinstance(c, ContentReasoning) and not c.redacted for c in content)
         usage = state.output.usage
         return Score(value=CORRECT if tok == target.text else INCORRECT, answer=tok,
                      metadata={"off_space": tok not in space,
@@ -230,7 +243,8 @@ def first_token(poem: bool) -> Scorer:
 @task
 def no_thinking(filler: int = 0, filler_position: str = "after", filler_unit: str = " -", poem: bool = False,
                 addressee: str | None = None, reasoning_effort: str | None = "none", temperature: float | None = None,
-                families: str | None = None, levels: str | None = None, data: str | None = None) -> Task:
+                max_tokens: int = 4, families: str | None = None, levels: str | None = None,
+                data: str | None = None) -> Task:
     def as_list(v) -> list[str]:  # -T values arrive as str, int or list depending on how they were typed
         if isinstance(v, (list, tuple, set)):
             return [str(x) for x in v]
@@ -241,6 +255,7 @@ def no_thinking(filler: int = 0, filler_position: str = "after", filler_unit: st
         dataset=load_dataset(Path(data) if data else DEFAULT_DATA, fams, lvls),
         solver=[prepare_prompt(filler, filler_position, filler_unit, poem, addressee), generate()],
         scorer=first_token(poem),
-        config=GenerateConfig(max_tokens=400 if poem else 4, reasoning_effort=reasoning_effort, temperature=temperature),
+        config=GenerateConfig(max_tokens=400 if poem else max_tokens, reasoning_effort=reasoning_effort,
+                              temperature=temperature),
         name="no_thinking",
     )

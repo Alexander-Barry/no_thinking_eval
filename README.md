@@ -58,6 +58,7 @@ Task parameters, set with `-T name=value`:
 | `addressee` | the name in the greeting. The data greets Claude, and other models are greeted by their own name so that every model reads the same prompt apart from the name. Inferred from the model id for Claude, Gemini and ChatGPT models, required for anything else | inferred |
 | `reasoning_effort` | passed to the provider; some OpenAI reasoning models only accept `minimal` | none |
 | `temperature` | sampling temperature; must be omitted for models that reject it | omitted |
+| `max_tokens` | the output budget. Only the first token is scored, so a larger budget changes nothing but cost; the OpenAI Responses API refuses anything below 16 | 4 |
 | `families`, `levels` | comma-separated filters | all |
 | `data` | path to an items file | data/generated.jsonl |
 
@@ -70,8 +71,9 @@ Each cell reports:
 - `accuracy`, to be read against the cell's `chance`.
 - `off_space`, the share of answers whose first token was not in the answer space. These count as wrong. The
   rate separates a model that fails from one that does not comply.
-- `reasoning_blocks`, the share of samples whose output contained any reasoning content. It must be 0. Anything
-  else means the provider reasoned despite the setting, and the run is not a single-forward-pass measurement.
+- `reasoning_blocks`, the share of samples whose output contained any reasoning content, and `reasoning_tokens`,
+  the mean reasoning tokens the provider reported. Both must be 0. Anything else means the provider reasoned
+  despite the setting, and the run is not a single-forward-pass measurement.
 - `output_tokens`, the mean per sample including any hidden reasoning tokens the provider bills. Expect 1 to 4
   with the token budget and around 100 to 150 for the poem.
 

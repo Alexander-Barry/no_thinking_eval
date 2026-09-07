@@ -95,6 +95,23 @@ CHAIN_VOCAB = [
     ["bread", "rice", "cheese", "soup", "cake", "pasta", "salad", "pie", "stew", "toast"],
     ["ruby", "opal", "jade", "onyx", "pearl", "topaz", "amber", "coral", "ivory", "agate"],
     ["tulip", "rose", "lily", "daisy", "iris", "poppy", "lotus", "orchid", "peony", "violet"],
+    # layers 17-32, added 2026-09-07 for depths 20, 24 and 32
+    ["car", "bus", "train", "bike", "boat", "truck", "plane", "ship", "tram", "van"],
+    ["hand", "foot", "knee", "elbow", "nose", "ear", "chin", "wrist", "thumb", "heel"],
+    ["baker", "nurse", "judge", "pilot", "farmer", "tailor", "miner", "clerk", "monk", "poet"],
+    ["golf", "tennis", "rugby", "chess", "boxing", "rowing", "polo", "judo", "hockey", "cricket"],
+    ["kitchen", "attic", "cellar", "garage", "chapel", "tower", "barn", "hut", "palace", "cabin"],
+    ["mars", "venus", "jupiter", "saturn", "neptune", "pluto", "comet", "nebula", "orbit", "eclipse"],
+    ["silk", "wool", "linen", "cotton", "denim", "velvet", "satin", "tweed", "nylon", "lace"],
+    ["tea", "coffee", "milk", "juice", "cider", "cocoa", "beer", "wine", "soda", "water"],
+    ["robin", "eagle", "crow", "swan", "heron", "finch", "pigeon", "parrot", "sparrow", "falcon"],
+    ["salmon", "trout", "cod", "tuna", "shark", "carp", "pike", "perch", "herring", "haddock"],
+    ["waltz", "tango", "salsa", "polka", "jazz", "blues", "opera", "ballet", "samba", "disco"],
+    ["hill", "valley", "cliff", "canyon", "desert", "glacier", "island", "marsh", "meadow", "plateau"],
+    ["spoon", "fork", "knife", "plate", "bowl", "cup", "kettle", "pan", "jug", "ladle"],
+    ["puzzle", "kite", "doll", "marble", "yoyo", "domino", "dice", "card", "robot", "teddy"],
+    ["algebra", "history", "physics", "biology", "chemistry", "geology", "grammar", "drama", "ethics", "logic"],
+    ["beetle", "wasp", "moth", "hornet", "gnat", "termite", "locust", "mantis", "aphid", "flea"],
 ]
 # The layers must be disjoint. A word in two layers would appear twice as a key, and a reader that resolves it by
 # position would take a wrong hop for a reason unrelated to depth.
@@ -262,13 +279,13 @@ def gen_iterate_map(rng: random.Random, id_: str, steps: int, want_answer: str):
 # --------------------------------------------------------------------------
 # Ladder: level k = the k-th depth on the shared grid
 # --------------------------------------------------------------------------
-DEPTHS = [1, 2, 3, 4, 6, 8, 12, 16, 20]
+DEPTHS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32]
 
 FAMILY_DEPTHS = {
     "sequence_mod": [1, 2, 3, 4, 6, 8, 12, 16, 20],
-    "iterate_map": [1, 2, 3, 4, 6, 8, 12],        # a 26-cycle is honest only up to depth 13
+    "iterate_map": [1, 2, 3, 4, 6, 8, 12],                  # a 26-cycle is honest only up to depth 13
     "state_machine": [1, 2, 3, 4, 6, 8, 12, 16, 20],
-    "chain_lookup": [1, 2, 3, 4, 6, 8, 12, 16],   # one vocabulary layer per hop
+    "chain_lookup": [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32],  # one vocabulary layer per hop
 }
 
 GENERATORS = {"sequence_mod": gen_sequence_mod, "iterate_map": gen_iterate_map,

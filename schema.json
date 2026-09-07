@@ -18,7 +18,7 @@
       "required": ["level", "depth"],
       "additionalProperties": false,
       "properties": {
-        "level": {"type": "integer", "minimum": 1, "maximum": 9, "description": "Position on the shared depth grid 1 2 3 4 6 8 12 16 20."},
+        "level": {"type": "integer", "minimum": 1, "maximum": 11, "description": "Position on the shared depth grid 1 2 3 4 6 8 12 16 20 24 32."},
         "depth": {"type": "integer", "minimum": 1, "description": "Number of map applications composed: hops, steps or word length."}
       }
     },

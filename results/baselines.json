@@ -137,6 +137,18 @@
   "8": {
    "acc": 0.175,
    "name": "row_align_input"
+  },
+  "9": {
+   "acc": 0.2,
+   "name": "end_last_value_1hop"
+  },
+  "10": {
+   "acc": 0.2,
+   "name": "alpha_rank_row_align"
+  },
+  "11": {
+   "acc": 0.225,
+   "name": "end_row_align_1hop"
   }
  }
 }

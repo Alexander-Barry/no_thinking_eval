@@ -8,7 +8,7 @@ To make that measurable, every question has a known serial depth. The prompt set
 system, such as a permutation of the alphabet or a five-state machine, and then gives a one-token input. The
 answer is reached from the input in a fixed number of steps, each one application of the rules that needs the
 result of the step before it. A model that can carry k such steps in one forward pass should be accurate up
-to depth k and at chance beyond it. There are four families of rules on a shared grid of depths from 1 to 20,
+to depth k and at chance beyond it. There are five families of rules on a shared grid of depths from 1 to 64,
 each built so that the k steps never collapse into fewer.
 
 Thinking is turned off with Inspect's reasoning_effort="none", which maps to each provider's thinking-off

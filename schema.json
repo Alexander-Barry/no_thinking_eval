@@ -7,7 +7,7 @@
   "additionalProperties": false,
   "properties": {
     "id": {"type": "string", "description": "<family>-L<level>-s<seed>-<index>"},
-    "family": {"type": "string", "enum": ["iterate_map", "state_machine", "chain_lookup", "sequence_mod"]},
+    "family": {"type": "string", "enum": ["iterate_map", "iterate_map36", "state_machine", "chain_lookup", "sequence_mod"]},
     "prompt": {"type": "string", "description": "The full prompt as sent to the model (greeting Claude); it ends with the Input line."},
     "rules": {"type": "array", "items": {"type": "string"}, "minItems": 1, "description": "The numbered rules, in display order."},
     "input": {"type": "string", "description": "The single-token input: a letter, a digit or a short word."},

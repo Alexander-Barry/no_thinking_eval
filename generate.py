@@ -3,11 +3,12 @@ Generates the items for the single-forward-pass rule tasks.
 
     python generate.py --seed 0        writes 40 items per (family, level) cell to data/generated.jsonl
 
-There are four families. Each is a small system whose rules are written out in full in the prompt, and each item
+There are five families. Each is a small system whose rules are written out in full in the prompt, and each item
 asks for the result of running the system on a one-token input for a set number of steps: a permutation of the
-letters applied k times, a chain of k word-to-word maps, a word of k permutations run on a five-state machine, and
-a two-term recurrence over digits run for k terms. Every step is a bijection, so no step loses information and k
-steps never collapse into fewer.
+letters applied k times (and the same over the 36 symbols A-Z and 0-9, which lets the ladder continue past depth
+12), a chain of k word-to-word maps, a word of k permutations run on a five-state machine, and a two-term
+recurrence over digits run for k terms. Every step is a bijection, so no step loses information and k steps never
+collapse into fewer.
 
 The depth grid is shared by all families, so a level means the same number of steps everywhere. Within each
 (family, level) cell the answers are balanced by construction: the wanted answers are laid out first, and each
@@ -47,12 +48,14 @@ POEM_TRAILER = ("Before you answer, please write a short poem (around 100 words)
 
 
 def answer_phrase(answer_space) -> str:
-    """'a single digit from 0-4' or 'a single capital letter from A-Z'."""
+    """'a single digit from 0-4', 'a single capital letter from A-Z', or the 36-symbol phrase."""
     sp = sorted(answer_space)
     if all(a.isdigit() for a in sp):
         return f"a single digit from {sp[0]}-{sp[-1]}"
     if all(a.isalpha() and a.isupper() for a in sp):
         return f"a single capital letter from {sp[0]}-{sp[-1]}"
+    if set(sp) == set(LETTERS + DIGITS):
+        return "a single capital letter from A-Z or a single digit from 0-9"
     raise ValueError(f"unrecognised answer space: {sp}")
 
 
@@ -310,6 +313,41 @@ def gen_iterate_map(rng: random.Random, id_: str, steps: int, want_answer: str):
 
 
 # --------------------------------------------------------------------------
+# iterate_map36: the same iteration over the 36 symbols A-Z and 0-9, honest to depth 18
+# --------------------------------------------------------------------------
+SYMBOLS = LETTERS + DIGITS  # listed in this order in the prompt
+
+
+def gen_iterate_map36(rng: random.Random, id_: str, steps: int, want_answer: str):
+    """The letters family with digits added so that the cycle has 36 elements and a k-step item is k genuine steps for
+    every k up to 18. Added 2026-09-08 because one model was still well above chance at depth 12 on 26 letters; the
+    26-letter family stays as it is, and this one continues the ladder to depth 16. Neighbouring entries (g(c) is the
+    symbol before or after c in the A-Z 0-9 listing) are limited in the same way."""
+    assert 1 <= steps <= 18
+    n = len(SYMBOLS)
+    for _ in range(200):
+        cyc = list(SYMBOLS)
+        rng.shuffle(cyc)
+        f = {cyc[i]: cyc[(i + 1) % n] for i in range(n)}
+        if sum(abs(SYMBOLS.index(f[c]) - SYMBOLS.index(c)) == 1 for c in SYMBOLS) < 3:
+            break
+    inv = {v: k for k, v in f.items()}
+    x0 = want_answer
+    for _ in range(steps):
+        x0 = inv[x0]
+    x, path = x0, [x0]
+    for _ in range(steps):
+        x = f[x]
+        path.append(x)
+    rules = ["This question concerns a permutation g of the 36 symbols consisting of the capital letters A-Z and the digits 0-9, "
+             "given by: " + ", ".join(f"g({c}) = {f[c]}" for c in SYMBOLS) + ".",
+             f"Apply g to the input symbol exactly {steps} time{'s' if steps > 1 else ''} in succession.",
+             "Answer with the symbol you end on."]
+    return item(id_=id_, family="iterate_map36", rules=rules, input_text=x0, answer=x,
+                answer_space=list(SYMBOLS), rationale="orbit: " + " -> ".join(path))
+
+
+# --------------------------------------------------------------------------
 # Ladder: level k = the k-th depth on the shared grid
 # --------------------------------------------------------------------------
 DEPTHS = [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64]
@@ -319,13 +357,14 @@ FAMILY_DEPTHS = {
     "iterate_map": [1, 2, 3, 4, 6, 8, 12],                  # a 26-cycle is honest only up to depth 13
     "state_machine": [1, 2, 3, 4, 6, 8, 12, 16, 20],
     "chain_lookup": [1, 2, 3, 4, 6, 8, 12, 16, 20, 24, 32, 48, 64],  # one vocabulary layer per hop
+    "iterate_map36": [1, 2, 3, 4, 6, 8, 12, 16],                    # a 36-cycle is honest up to depth 18
 }
 
 GENERATORS = {"sequence_mod": gen_sequence_mod, "iterate_map": gen_iterate_map,
-              "state_machine": gen_state_machine, "chain_lookup": gen_chain_lookup}
+              "state_machine": gen_state_machine, "chain_lookup": gen_chain_lookup, "iterate_map36": gen_iterate_map36}
 
 ANSWER_SPACE = {"sequence_mod": list(DIGITS), "iterate_map": list(LETTERS),
-                "state_machine": [str(i) for i in range(N_STATES)], "chain_lookup": list(DIGITS)}
+                "state_machine": [str(i) for i in range(N_STATES)], "chain_lookup": list(DIGITS), "iterate_map36": list(SYMBOLS)}
 
 
 def stratified_targets(rng: random.Random, space: list[str], n: int) -> list[str]:
